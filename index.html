@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Bookmark & Navigation Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-dark:  #1a365d;
+      --blue:       #2b6cb0;
+      --blue-light: #bee3f8;
+      --blue-pale:  #ebf8ff;
+      --green:      #276749;
+      --green-bg:   #f0fff4;
+      --orange:     #c05621;
+      --orange-bg:  #fffaf0;
+      --red:        #c53030;
+      --red-bg:     #fff5f5;
+      --gray-100:   #f7fafc;
+      --gray-200:   #edf2f7;
+      --gray-300:   #e2e8f0;
+      --gray-500:   #718096;
+      --gray-700:   #2d3748;
+      --gray-900:   #1a202c;
+      --shadow:     0 2px 12px rgba(0,0,0,.10);
+      --radius:     10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--gray-100);
+      color: var(--gray-700);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--blue-dark) 0%, var(--blue) 100%);
+      color: #fff;
+      padding: 22px 32px;
+      display: flex; align-items: center; gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header .logo { font-size: 2rem; }
+    header h1 { font-size: 1.4rem; font-weight: 700; }
+    header p  { font-size: .85rem; opacity: .8; margin-top: 2px; }
+
+    /* ── Layout ── */
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--blue-dark);
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card h2 .step {
+      background: var(--blue);
+      color: #fff;
+      font-size: .75rem;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ── Drop Zone ── */
+    #drop-zone {
+      border: 2.5px dashed var(--blue-light);
+      border-radius: var(--radius);
+      background: var(--blue-pale);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    #drop-zone.drag-over {
+      border-color: var(--blue);
+      background: #dbeafe;
+    }
+    #drop-zone .icon { font-size: 3rem; margin-bottom: 12px; }
+    #drop-zone p { color: var(--gray-500); font-size: .95rem; }
+    #drop-zone strong { color: var(--blue); }
+    #file-input { display: none; }
+
+    /* ── Progress ── */
+    #progress-bar-wrap {
+      display: none;
+      background: var(--gray-200);
+      border-radius: 99px;
+      height: 8px;
+      margin-top: 16px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), #63b3ed);
+      border-radius: 99px;
+      transition: width .3s;
+    }
+    #status-msg { margin-top: 10px; font-size: .9rem; color: var(--gray-500); text-align: center; }
+
+    /* ── Metadata strip ── */
+    #meta-strip {
+      display: none;
+      background: var(--blue-pale);
+      border-left: 4px solid var(--blue);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 18px;
+      margin-top: 16px;
+      font-size: .88rem;
+    }
+    #meta-strip .meta-row { display: flex; flex-wrap: wrap; gap: 20px; }
+    #meta-strip .meta-item span { font-weight: 600; color: var(--blue-dark); }
+
+    /* ── Heading controls ── */
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .controls-row label { font-size: .88rem; color: var(--gray-500); }
+
+    input[type="text"], input[type="number"] {
+      border: 1.5px solid var(--gray-300);
+      border-radius: 6px;
+      padding: 7px 11px;
+      font-size: .9rem;
+      color: var(--gray-700);
+      outline: none;
+      transition: border-color .15s;
+    }
+    input[type="text"]:focus, input[type="number"]:focus {
+      border-color: var(--blue);
+    }
+
+    /* ── Heading table ── */
+    #headings-wrap { display: none; }
+
+    .heading-stats {
+      display: flex; gap: 12px; flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .stat-pill {
+      background: var(--gray-100);
+      border: 1px solid var(--gray-300);
+      border-radius: 99px;
+      padding: 4px 14px;
+      font-size: .8rem;
+      color: var(--gray-700);
+    }
+    .stat-pill b { color: var(--blue); }
+
+    #heading-list {
+      max-height: 420px;
+      overflow-y: auto;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--gray-100);
+      font-size: .78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--gray-500);
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--gray-300);
+      position: sticky; top: 0; z-index: 2;
+    }
+    tbody tr { border-bottom: 1px solid var(--gray-200); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--gray-100); }
+    tbody td { padding: 8px 14px; font-size: .875rem; vertical-align: middle; }
+
+    .level-badge {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 7px;
+      text-transform: uppercase;
+    }
+    .level-1 { background: #2b6cb0; color: #fff; }
+    .level-2 { background: #2c7a7b; color: #fff; }
+    .level-3 { background: #6b46c1; color: #fff; }
+    .level-4 { background: #744210; color: #fff; }
+
+    .heading-text-cell { max-width: 420px; }
+    .heading-text-edit {
+      border: none; background: transparent;
+      font-size: .875rem; width: 100%;
+      padding: 2px; border-radius: 4px;
+    }
+    .heading-text-edit:focus {
+      outline: 2px solid var(--blue-light);
+      background: var(--blue-pale);
+    }
+
+    select.level-select {
+      border: 1px solid var(--gray-300);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: .8rem;
+    }
+
+    .del-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--gray-500); font-size: 1rem;
+      padding: 2px 6px; border-radius: 4px;
+      transition: color .15s;
+    }
+    .del-btn:hover { color: var(--red); }
+
+    /* ── Add heading ── */
+    #add-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+    #add-row input { flex: 1; min-width: 200px; }
+    #add-row input[type="number"] { width: 90px; flex: none; }
+
+    /* ── Output options ── */
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .option-card {
+      border: 2px solid var(--gray-300);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+    }
+    .option-card.selected {
+      border-color: var(--blue);
+      background: var(--blue-pale);
+    }
+    .option-card input[type="checkbox"] {
+      position: absolute; top: 12px; right: 12px;
+    }
+    .option-card .oc-icon { font-size: 1.8rem; margin-bottom: 8px; }
+    .option-card h3 { font-size: .95rem; color: var(--gray-700); margin-bottom: 4px; }
+    .option-card p  { font-size: .8rem; color: var(--gray-500); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: none; border-radius: 8px; padding: 11px 22px;
+      font-size: .95rem; font-weight: 600; cursor: pointer;
+      transition: all .18s;
+    }
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--blue-dark); transform: translateY(-1px); }
+    .btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; transform: none; }
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid var(--blue);
+      color: var(--blue);
+    }
+    .btn-outline:hover { background: var(--blue-pale); }
+    .btn-green { background: #276749; color: #fff; }
+    .btn-green:hover { background: #22543d; }
+    .btn-sm { padding: 6px 14px; font-size: .82rem; }
+
+    /* ── Download section ── */
+    #download-section { display: none; }
+    .download-grid {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      margin-top: 8px;
+    }
+    .dl-card {
+      background: var(--green-bg);
+      border: 1.5px solid #9ae6b4;
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 14px;
+      text-decoration: none; color: var(--green);
+      transition: all .2s;
+    }
+    .dl-card:hover { background: #c6f6d5; transform: translateY(-1px); }
+    .dl-card .dl-icon { font-size: 2rem; }
+    .dl-card .dl-info h4 { font-size: .95rem; font-weight: 700; }
+    .dl-card .dl-info p  { font-size: .8rem; opacity: .75; margin-top: 2px; }
+
+    /* ── Alert ── */
+    .alert {
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: .88rem;
+      margin-bottom: 14px;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .alert-warn { background: var(--orange-bg); border: 1px solid #fbd38d; color: var(--orange); }
+    .alert-err  { background: var(--red-bg);    border: 1px solid #feb2b2; color: var(--red); }
+    .alert-info { background: var(--blue-pale);  border: 1px solid var(--blue-light); color: var(--blue-dark); }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2.5px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-size: .8rem;
+      color: var(--gray-500);
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📑</div>
+  <div>
+    <h1>PDF Bookmark &amp; Navigation Tool</h1>
+    <p>Auto-detect headings · Generate bookmarks · Create Table of Contents</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- Step 1: Upload -->
+  <div class="card">
+    <h2><span class="step">1</span> Upload Engineering Report</h2>
+
+    <div id="drop-zone">
+      <div class="icon">📂</div>
+      <p><strong>Drag &amp; drop your PDF here</strong></p>
+      <p style="margin-top:8px">or <strong style="cursor:pointer;text-decoration:underline" onclick="document.getElementById('file-input').click()">browse to select</strong></p>
+      <p style="margin-top:8px; font-size:.8rem">Supports PDF up to 200 MB · All page counts supported</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf" />
+
+    <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    <div id="status-msg"></div>
+
+    <div id="meta-strip">
+      <div class="meta-row" id="meta-content"></div>
+    </div>
+  </div>
+
+  <!-- Step 2: Review Headings -->
+  <div class="card" id="headings-wrap">
+    <h2><span class="step">2</span> Review &amp; Edit Detected Headings</h2>
+
+    <div id="alert-container"></div>
+
+    <div class="controls-row">
+      <div class="heading-stats" id="heading-stats"></div>
+      <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="filterLevel(0)">All</button>
+        <button class="btn btn-outline btn-sm" onclick="filterLevel(1)">H1</button>
+        <button class="btn btn-outline btn-sm" onclick="filterLevel(2)">H2</button>
+        <button class="btn btn-outline btn-sm" onclick="filterLevel(3)">H3+</button>
+        <button class="btn btn-outline btn-sm" onclick="sortByPage()">Sort by Page</button>
+      </div>
+    </div>
+
+    <div id="heading-list">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Level</th>
+            <th>Heading Text</th>
+            <th>Page</th>
+            <th>Remove</th>
+          </tr>
+        </thead>
+        <tbody id="heading-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="add-row">
+      <input type="text" id="add-text" placeholder="Add a heading manually…" />
+      <input type="number" id="add-page" placeholder="Page" min="1" style="width:80px"/>
+      <select id="add-level" style="padding:7px 10px; border:1.5px solid var(--gray-300); border-radius:6px; font-size:.9rem;">
+        <option value="1">H1</option>
+        <option value="2">H2</option>
+        <option value="3" selected>H3</option>
+        <option value="4">H4</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="addHeading()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Generate -->
+  <div class="card" id="generate-wrap" style="display:none">
+    <h2><span class="step">3</span> Generate Outputs</h2>
+
+    <div class="options-grid">
+      <div class="option-card selected" id="opt-toc" onclick="toggleOption('toc')">
+        <input type="checkbox" id="cb-toc" checked />
+        <div class="oc-icon">📋</div>
+        <h3>Table of Contents PDF</h3>
+        <p>Standalone TOC document with page numbers and heading hierarchy</p>
+      </div>
+      <div class="option-card selected" id="opt-bm" onclick="toggleOption('bm')">
+        <input type="checkbox" id="cb-bm" checked />
+        <div class="oc-icon">🔖</div>
+        <h3>Bookmarked PDF</h3>
+        <p>Original PDF with clickable bookmark panel for fast navigation</p>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <button class="btn btn-primary" id="gen-btn" onclick="generateOutputs()">
+        ⚙️ Generate Files
+      </button>
+      <span id="gen-status" style="font-size:.9rem; color:var(--gray-500);"></span>
+    </div>
+  </div>
+
+  <!-- Step 4: Download -->
+  <div class="card" id="download-section">
+    <h2><span class="step">4</span> Download Your Files</h2>
+    <div class="download-grid" id="download-links"></div>
+    <p style="font-size:.82rem; color:var(--gray-500); margin-top:14px;">
+      💡 Tip: Open the Bookmarked PDF in Adobe Acrobat or any modern PDF viewer to see the bookmark panel on the left sidebar.
+    </p>
+  </div>
+
+  <footer>
+    PDF Bookmark &amp; Navigation Tool &nbsp;·&nbsp; Built for engineering teams
+  </footer>
+
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let state = {
+  fileId: null,
+  filename: "",
+  totalPages: 0,
+  headings: [],
+  filterLevel: 0,
+};
+
+// ── Drop zone ────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("drag-over");
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+dropZone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+// ── Upload & Analyse ─────────────────────────────────────────────────────────
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    showAlert("alert-err", "⚠️ Only PDF files are supported.");
+    return;
+  }
+
+  setStatus(`📤 Uploading ${file.name}…`);
+  showProgress(15);
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    showProgress(40);
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    showProgress(80);
+    const data = await res.json();
+
+    if (data.error) { setStatus(""); showAlert("alert-err", "❌ " + data.error); return; }
+
+    state.fileId    = data.file_id;
+    state.filename  = data.filename;
+    state.totalPages = data.page_count;
+    state.headings  = data.headings || [];
+
+    showProgress(100);
+    setTimeout(() => { document.getElementById("progress-bar-wrap").style.display = "none"; }, 600);
+    setStatus(`✅ Analysed — ${data.page_count} pages · ${data.heading_count} headings found via ${data.detection_method}`);
+
+    renderMeta(data);
+    renderHeadings();
+    document.getElementById("headings-wrap").style.display = "block";
+    document.getElementById("generate-wrap").style.display = "block";
+    document.getElementById("download-section").style.display = "none";
+
+    if (data.errors && data.errors.length) {
+      data.errors.forEach(e => showAlert("alert-warn", "⚠️ " + e));
+    }
+  } catch (err) {
+    setStatus("");
+    showAlert("alert-err", "❌ Upload failed: " + err.message);
+  }
+}
+
+function showProgress(pct) {
+  const wrap = document.getElementById("progress-bar-wrap");
+  const bar  = document.getElementById("progress-bar");
+  wrap.style.display = "block";
+  bar.style.width = pct + "%";
+}
+
+function setStatus(msg) {
+  document.getElementById("status-msg").textContent = msg;
+}
+
+// ── Metadata ─────────────────────────────────────────────────────────────────
+function renderMeta(data) {
+  const strip = document.getElementById("meta-strip");
+  const meta  = data.metadata || {};
+  const items = [
+    ["Pages", data.page_count],
+    ["Headings", data.heading_count],
+    ["Title",  meta.title  || "—"],
+    ["Author", meta.author || "—"],
+  ].filter(([, v]) => v);
+
+  document.getElementById("meta-content").innerHTML = items
+    .map(([k, v]) => `<div class="meta-item">${k}: <span>${v}</span></div>`)
+    .join("");
+
+  strip.style.display = "block";
+}
+
+// ── Headings render ───────────────────────────────────────────────────────────
+function renderHeadings() {
+  const tbody = document.getElementById("heading-tbody");
+  const list  = state.filterLevel === 0
+    ? state.headings
+    : state.headings.filter(h => h.level === state.filterLevel);
+
+  tbody.innerHTML = list.map((h, idx) => {
+    const realIdx = state.headings.indexOf(h);
+    return `
+    <tr data-idx="${realIdx}">
+      <td style="color:var(--gray-500); width:40px">${realIdx + 1}</td>
+      <td style="width:90px">
+        <select class="level-select" onchange="updateLevel(${realIdx}, this.value)">
+          ${[1,2,3,4].map(l =>
+            `<option value="${l}" ${h.level===l?"selected":""}>${["H1","H2","H3","H4"][l-1]}</option>`
+          ).join("")}
+        </select>
+      </td>
+      <td class="heading-text-cell">
+        <input class="heading-text-edit" value="${escHtml(h.text)}"
+          onchange="updateText(${realIdx}, this.value)"
+          style="padding-left: ${(h.level-1)*14}px" />
+      </td>
+      <td style="width:70px">
+        <input type="number" value="${h.page}" min="1" max="${state.totalPages}"
+          style="width:60px; font-size:.85rem; border:1px solid var(--gray-300); border-radius:4px; padding:3px 6px;"
+          onchange="updatePage(${realIdx}, this.value)" />
+      </td>
+      <td style="width:50px; text-align:center">
+        <button class="del-btn" onclick="deleteHeading(${realIdx})" title="Remove">✕</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  // Stats
+  const counts = {1:0, 2:0, 3:0, 4:0};
+  state.headings.forEach(h => { counts[Math.min(h.level,4)]++; });
+  document.getElementById("heading-stats").innerHTML =
+    `<span class="stat-pill">Total: <b>${state.headings.length}</b></span>` +
+    [1,2,3,4].filter(l => counts[l]>0)
+      .map(l => `<span class="stat-pill">H${l}: <b>${counts[l]}</b></span>`)
+      .join("");
+}
+
+function filterLevel(level) { state.filterLevel = level; renderHeadings(); }
+function sortByPage()       { state.headings.sort((a,b) => a.page - b.page); renderHeadings(); }
+function escHtml(s)         { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function updateText(idx, val) { state.headings[idx].text = val; }
+function updatePage(idx, val) { state.headings[idx].page = parseInt(val)||1; }
+function updateLevel(idx, val){ state.headings[idx].level = parseInt(val); renderHeadings(); }
+
+function deleteHeading(idx) {
+  state.headings.splice(idx, 1);
+  renderHeadings();
+}
+
+function addHeading() {
+  const text  = document.getElementById("add-text").value.trim();
+  const page  = parseInt(document.getElementById("add-page").value)||1;
+  const level = parseInt(document.getElementById("add-level").value)||2;
+  if (!text) return;
+  state.headings.push({ text, page, level, method: "manual" });
+  state.headings.sort((a,b)=>a.page-b.page);
+  document.getElementById("add-text").value = "";
+  document.getElementById("add-page").value = "";
+  renderHeadings();
+}
+
+// ── Options ───────────────────────────────────────────────────────────────────
+function toggleOption(which) {
+  const card = document.getElementById("opt-" + which);
+  const cb   = document.getElementById("cb-"  + which);
+  cb.checked = !cb.checked;
+  card.classList.toggle("selected", cb.checked);
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+async function generateOutputs() {
+  const wantToc = document.getElementById("cb-toc").checked;
+  const wantBm  = document.getElementById("cb-bm").checked;
+  if (!wantToc && !wantBm) { showAlert("alert-warn","⚠️ Select at least one output type."); return; }
+  if (!state.fileId)        { showAlert("alert-err","❌ Please upload a PDF first."); return; }
+
+  const btn = document.getElementById("gen-btn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Generating…`;
+  document.getElementById("gen-status").textContent = "";
+
+  const type = wantToc && wantBm ? "both" : wantToc ? "toc" : "bookmarks";
+  const docTitle = (document.getElementById("meta-content").querySelector("span")?.textContent || state.filename)
+    .replace(/\.pdf$/i,"");
+
+  try {
+    const res  = await fetch("/api/generate", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        file_id:     state.fileId,
+        headings:    state.headings,
+        doc_title:   docTitle,
+        total_pages: state.totalPages,
+        type,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.error) { showAlert("alert-err","❌ " + data.error); }
+    else            { renderDownloads(data.outputs, docTitle); }
+  } catch(err) {
+    showAlert("alert-err","❌ Generation failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "⚙️ Generate Files";
+  }
+}
+
+function renderDownloads(outputs, title) {
+  const section = document.getElementById("download-section");
+  const grid    = document.getElementById("download-links");
+  grid.innerHTML = "";
+
+  if (outputs.toc) {
+    grid.innerHTML += `
+      <a class="dl-card" href="/api/download/${outputs.toc}" download>
+        <div class="dl-icon">📋</div>
+        <div class="dl-info">
+          <h4>Table of Contents</h4>
+          <p>${title} — TOC.pdf</p>
+        </div>
+      </a>`;
+  }
+  if (outputs.bookmarked) {
+    grid.innerHTML += `
+      <a class="dl-card" href="/api/download/${outputs.bookmarked}" download>
+        <div class="dl-icon">🔖</div>
+        <div class="dl-info">
+          <h4>Bookmarked PDF</h4>
+          <p>${title} — with bookmarks</p>
+        </div>
+      </a>`;
+  }
+
+  section.style.display = "block";
+  section.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+function showAlert(type, msg) {
+  const container = document.getElementById("alert-container");
+  const div = document.createElement("div");
+  div.className = `alert ${type}`;
+  div.innerHTML = `<span>${msg}</span><button onclick="this.parentNode.remove()"
+    style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:1rem;">✕</button>`;
+  container.appendChild(div);
+  setTimeout(() => div.remove(), 8000);
+}
+</script>
+</body>
+</html>
